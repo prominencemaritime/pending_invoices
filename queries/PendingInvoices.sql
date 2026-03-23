@@ -10,4 +10,4 @@ SELECT
 	(invoice_due_date::date - NOW()::date) as day_count
 FROM
 	public_reporting.fct_invoicing__per_ref_code
-ORDER BY invoice_due_date DESC;
+ORDER BY invoice_due_date ASC;

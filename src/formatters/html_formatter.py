@@ -397,9 +397,13 @@ class HTMLFormatter:
             <thead>
                 <tr>
 """
+            _display_name_overrides = {
+                'amount_usd': 'USD',
+            }
+
             # Add column headers (only for display columns)
             for col in display_columns:
-                display_name = col.replace('_', ' ').title()
+                display_name = _display_name_overrides.get(col, col.replace('_', ' ').title())
                 html += f"                    <th>{display_name}</th>\n"
 
             html += """                </tr>

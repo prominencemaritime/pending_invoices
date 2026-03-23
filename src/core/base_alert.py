@@ -175,19 +175,23 @@ class BaseAlert(ABC):
                 self._write_health_status("OK", run_time)
                 return False
 
-            # Step 4: Filter out already-sent events
-            self.logger.info("--> Checking for previously sent notifications...")
-            df_unsent = self.config.tracker.filter_unsent_events(
-                df_filtered,
-                key_func=self.get_tracking_key
-            )
+            # Step 4: Filter out already-sent events (skipped if RESEND_EVENTS_ON=True)
+            if self.config.repeat_on:
+                self.logger.info("--> RESEND_EVENTS_ON=True: skipping deduplication, all records will be sent")
+                df_unsent = df_filtered
+            else:
+                self.logger.info("--> Checking for previously sent notifications...")
+                df_unsent = self.config.tracker.filter_unsent_events(
+                    df_filtered,
+                    key_func=self.get_tracking_key
+                )
 
-            if df_unsent.empty:
-                self.logger.info("All records have been sent previously. No new notifications.")
-                self._write_health_status("OK", run_time)
-                return False
+                if df_unsent.empty:
+                    self.logger.info("All records have been sent previously. No new notifications.")
+                    self._write_health_status("OK", run_time)
+                    return False
 
-            self.logger.info(f"[OK] len(df_unsent)={len(df_unsent)} new record{'' if len(df_unsent)==1 else 's'} to notify")
+                self.logger.info(f"[OK] len(df_unsent)={len(df_unsent)} new record{'' if len(df_unsent)==1 else 's'} to notify")
 
             # Step 5: Route to recipients
             self.logger.info("--> Routing notifications to recipients...")
