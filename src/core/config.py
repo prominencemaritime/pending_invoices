@@ -69,7 +69,7 @@ class AlertConfig:
     # Tracking
     reminder_frequency_days: Union[float, None]
     sent_events_file: Path
-    resend_events_on: Bool
+    resend_events_on: bool
 
     # Logging
     log_file: Path
