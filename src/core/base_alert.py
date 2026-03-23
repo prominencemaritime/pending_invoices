@@ -176,7 +176,7 @@ class BaseAlert(ABC):
                 return False
 
             # Step 4: Filter out already-sent events (skipped if RESEND_EVENTS_ON=True)
-            if self.config.repeat_on:
+            if self.config.resend_events_on:
                 self.logger.info("--> RESEND_EVENTS_ON=True: skipping deduplication, all records will be sent")
                 df_unsent = df_filtered
             else:
