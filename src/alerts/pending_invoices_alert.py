@@ -90,12 +90,21 @@ class PendingInvoicesAlert(BaseAlert):
         df['_dept_key'] = df['department'].str.lower()
         emails_df['_dept_key'] = emails_df['department'].str.lower()
         df = df.merge(
-            emails_df[['_dept_key', 'primary_email', 'secondary_email']],
+            emails_df[['_dept_key', 'department_id', 'primary_email', 'secondary_email']],
             on='_dept_key',
             how='left'
         ).drop(columns='_dept_key')
         
         self.logger.info(f"PendingInvoicesAlert.fetch_data() is returning a df with {len(df)} rows")
+
+        missing_emails = df[df['primary_email'].isna()]
+        if not missing_emails.empty:
+            self.logger.warning(
+                f"No email mapping found for {missing_emails['department'].nunique()} "
+                f"department(s): {missing_emails['department'].unique().tolist()} -- "
+                f"these will be skipped during routing"
+            )
+
         return df
 
 
@@ -106,6 +115,7 @@ class PendingInvoicesAlert(BaseAlert):
             df: Raw pd.DataFrame from database
                 cols:
                     vessel,
+                    department_id,
                     department,
                     vendor,
                     invoice_no,
@@ -189,7 +199,7 @@ class PendingInvoicesAlert(BaseAlert):
         return full_url
 
 
-    def route_notifications(self, df:pd.DataFrame) -> List[Dict]:
+    def route_notifications(self, df: pd.DataFrame) -> List[Dict]:
         """
         Route data to appropriate recipients.
 
@@ -210,76 +220,106 @@ class PendingInvoicesAlert(BaseAlert):
                     invoice_date,
                     invoice_due_date,
                     amount_usd,
-                    day_count
-                    primary_email: Optional[str]
+                    day_count,
+                    department_id,
+                    primary_email: Optional[str],
                     secondary_email: Optional[str]
 
         Returns:
             List of notification job dictionaries
         """
+        self.logger.info(
+            f"route_notifications() called with {len(df)} record(s) "
+            f"across {df['department'].nunique()} department(s)"
+        )
         jobs = []
 
-        # Group by vessel
+        # Group by department, keeping NaN departments visible
         grouped = df.groupby('department', dropna=False)
+        self.logger.info(
+            f"Grouped into {len(grouped)} department group(s): "
+            f"{list(grouped.groups.keys())}"
+        )
 
         for department_name, dept_df in grouped:
+            self.logger.info(
+                f"Processing department '{department_name}': "
+                f"{len(dept_df)} record(s)"
+            )
+
             # Determine cc recipients
             primary_email = dept_df['primary_email'].iloc[0]
-            secondary_email = dept_df['secondary_email'].iloc[0] if 'secondary_email' in dept_df.columns else None
+            secondary_email = dept_df['secondary_email'].iloc[0]
 
             # Skip departments with no email configured
             if pd.isna(primary_email) or not primary_email:
-                self.logger.warning(f"No primary email for department '{department_name}', skipping")
+                self.logger.warning(
+                    f"No primary email for department '{department_name}' -- "
+                    f"skipping {len(dept_df)} record(s)"
+                )
                 continue
 
             # Build to recipients: primary + secondary (if present)
             to_recipients = [primary_email]
             if secondary_email and not pd.isna(secondary_email):
                 to_recipients.append(secondary_email)
+                self.logger.info(
+                    f"Department '{department_name}': primary={primary_email}, "
+                    f"secondary={secondary_email}"
+                )
+            else:
+                self.logger.info(
+                    f"Department '{department_name}': primary={primary_email}, "
+                    f"no secondary email"
+                )
 
             # CC recipients: fixed internal list from config
             cc_recipients = self.config.internal_recipients.copy()
 
-            # URL
+            # URL
             dept_df = dept_df.copy()
             dept_df['url'] = dept_df['ref'].apply(self._get_url_links)
 
             # Keep full data with tracking columns for the job
-            # The formatter will handle which columns to display
             full_data = dept_df.copy()
 
             # Specify WHICH cols to display in email and in what order here
             display_columns = [
-                    'priority',
-                    'vessel',
-                    'department',
-                    'vendor',
-                    'invoice_no',
-                    'invoice_date',
-                    'invoice_due_date',
-                    'amount_usd'
+                'priority',
+                'vessel',
+                #'department',
+                'vendor',
+                'invoice_no',
+                'invoice_date',
+                'invoice_due_date',
+                'amount_usd'
             ]
-
 
             # Create notification job
             job = {
-                    'recipients': to_recipients,
-                    'cc_recipients': cc_recipients,
-                    'data': full_data,
-                    'metadata': {
-                        'alert_title': 'Pending Invoices',
-                        'department_name': department_name,
-                        'company_name': 'Prominence Maritime S.A.',
-                        'display_columns': display_columns
-                    }
+                'recipients': to_recipients,
+                'cc_recipients': cc_recipients,
+                'data': full_data,
+                'metadata': {
+                    'alert_title': f'{department_name} Pending Invoices',
+                    'department_name': department_name,
+                    'department_id': int(dept_df['department_id'].iloc[0]),
+                    'company_name': 'Prominence Maritime S.A.',
+                    'display_columns': display_columns
+                }
             }
 
             jobs.append(job)
-
             self.logger.info(
-                    f"Created notification for department '{department_name}' "
-                    f"({len(full_data)} invoice{'' if len(full_data)==1 else 's'}) -> {to_recipients} "
-                    f"(CC: {len(cc_recipients)})"
+                f"Created notification for department '{department_name}' "
+                f"({len(full_data)} invoice{'' if len(full_data)==1 else 's'}) "
+                f"-> {to_recipients} (CC: {len(cc_recipients)})"
+            )
+
+        if not jobs:
+            self.logger.warning(
+                f"route_notifications() produced 0 jobs from {len(df)} input "
+                f"record(s) -- all departments were skipped"
             )
 
         return jobs

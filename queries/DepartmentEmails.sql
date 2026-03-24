@@ -1,4 +1,5 @@
 SELECT
+    d.id AS department_id,
 	d.name AS department,
 	d.email AS primary_email,
 	dse.email AS secondary_email

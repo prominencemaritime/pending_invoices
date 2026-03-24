@@ -385,6 +385,23 @@ class HTMLFormatter:
                 </div>
                 """
 
+            department_id = metadata.get('department_id', '')
+            if department_id:
+                url = (
+                    f"https://prominence.orca.tools/invoices"
+                    f"?filters%5B0%5D%5Bname%5D=reviewed"
+                    f"&filters%5B0%5D%5Boperation%5D=%3D"
+                    f"&filters%5B0%5D%5Bvalue%5D=false"
+                    f"&filters%5B1%5D%5Bname%5D=department_id"
+                    f"&filters%5B1%5D%5Boperation%5D=oneOf"
+                    f"&filters%5B1%5D%5Bvalue%5D%5B0%5D={department_id}"
+                )
+                html += f"""
+                    <p style="font-size: 13px; margin-top: 10px;">
+                        Click <a href="{url}">here</a> to see all pending invoices for this department.
+                    </p>
+                """
+
             # Determine which columns to display in main table
             display_columns = metadata.get('display_columns', list(df.columns))
             # Filter to only columns that exist in the dataframe
