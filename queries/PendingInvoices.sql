@@ -11,5 +11,5 @@ SELECT
 FROM
 	public_reporting.fct_invoicing__per_ref_code
 WHERE
-    invoice_reviewed_by = 'N/A'
+    invoice_good_for_payment = 'No'
 ORDER BY invoice_due_date ASC;
